@@ -143,16 +143,19 @@
                     return;
                 }
 
-                // 4. Salvataggio blindato su Supabase[cite: 2]
+                // Calcola l'ora italiana esatta
+                const oraLocale = new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().slice(0, -1);
+
+                // 4. Salvataggio blindato su Supabase con ora italiana
                 const { error: errIns } = await db.from('timbrature').insert([{
                     fk_dipendente: idDipendente,
                     fk_cantiere: idCantiere,
                     tipo_timbratura: tipo,
                     latitudine: posizione.lat,
                     longitudine: posizione.lng,
-                    id_dispositivo_utilizzato: idDispositivo
+                    id_dispositivo_utilizzato: idDispositivo,
+					timestamp_server: oraLocale
                 }]);
-
                 if (errIns) throw errIns;
 
                 msg.style.color = '#10b981';
