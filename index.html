@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Timbratura Cantieri</title>
+    <!-- Tailwind per uno stile pulito e ordinato -->
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex items-center justify-center p-4">
+
+    <div class="w-full max-w-md bg-slate-800 rounded-2xl shadow-xl p-6 border border-slate-700">
+        <h1 class="text-2xl font-bold text-center text-sky-400 mb-6">Timbri Jma</h1>
+        
+        <!-- Selezione Dipendente -->
+        <div class="mb-4">
+            <label class="block text-sm font-medium text-slate-300 mb-1">Dipendente</label>
+            <select id="dipendente" class="w-full p-2.5 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 focus:outline-none focus:border-sky-500">
+                <option value="">Chi sta timbrando?</option>
+            </select>
+        </div>
+
+        <!-- Inserimento PIN -->
+        <div class="mb-4">
+            <label class="block text-sm font-medium text-slate-300 mb-1">PIN Personale</label>
+            <input type="password" id="pin" maxlength="6" placeholder="Inserisci PIN" class="w-full p-2.5 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 focus:outline-none focus:border-sky-500">
+        </div>
+
+        <!-- Selezione Cantiere -->
+        <div class="mb-6">
+            <label class="block text-sm font-medium text-slate-300 mb-1">Cantiere</label>
+            <select id="cantiere" class="w-full p-2.5 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 focus:outline-none focus:border-sky-500">
+                <option value="">seleziona cantiere</option>
+            </select>
+        </div>
+
+        <!-- Pulsanti di Timbratura -->
+        <div class="grid grid-cols-2 gap-4">
+            <button onclick="eseguiTimbratura('ENTRATA')" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold p-3 rounded-lg transition">INIZIO</button>
+            <button onclick="eseguiTimbratura('USCITA')" class="bg-rose-600 hover:bg-rose-500 text-white font-bold p-3 rounded-lg transition">FINE</button>
+        </div>
+
+        <!-- Messaggio di stato -->
+        <div id="msg" class="text-center mt-4 text-sm font-medium"></div>
+    </div>
+
+    <!-- Libreria Supabase -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <!-- Logica JavaScript incorporata -->
+    <script>
+        // Configurazione di Supabase[cite: 2]
+        const SUPABASE_URL = 'https://ivpmvfvbdhdcvoiowwrg.supabase.co';
+        const SUPABASE_ANON_KEY = 'sb_publishable_vtZrAgSzW3moe0p501xB3g_D99s55Sh';
+
+        const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // Carica i dati all'avvio della pagina[cite: 2]
+        window.onload = async function() {
+            try {
+                const { data: dipendenti, error: errDip } = await db.from('dipendenti').select('*');
+                if (errDip) console.error("Errore dipendenti:", errDip);
+                
+                const selDip = document.getElementById('dipendente');
+                if (dipendenti) {
+                    dipendenti.forEach(d => {
+                        selDip.innerHTML += `<option value="${d.id_dipendente}">${d.nome_cognome}</option>`;
+                    });
+                }
+
+                const { data: cantieri, error: errCant } = await db.from('cantieri').select('*');
+                if (errCant) console.error("Errore cantieri:", errCant);
+
+                const selCant = document.getElementById('cantiere');
+                if (cantieri) {
+                    cantieri.forEach(c => {
+                        selCant.innerHTML += `<option value="${c.id_cantiere}">${c.nome_cantiere}</option>`;
+                    });
+                }
+            } catch (e) {
+                console.error("Errore di caricamento iniziale", e);
+            }
+        };
+
+        // Genera un'impronta unica per il dispositivo[cite: 2]
+        function ottieniIDDispositivo() {
+            let deviceId = localStorage.getItem('impronta_dispositivo');
+            if (!deviceId) {
+                deviceId = 'DEV-' + Math.random().toString(36).substring(2, 10).toUpperCase();
+                localStorage.setItem('impronta_dispositivo', deviceId);
+            }
+            return deviceId;
+        }
+
+        // Chiede la posizione GPS (restituisce coordinate o null se bloccata)[cite: 2]
+        function chiediPosizione() {
+            return new Promise((resolve) => {
+                if (!navigator.geolocation) {
+                    resolve({ lat: null, lng: null });
+                } else {
+                    navigator.geolocation.getCurrentPosition(
+                        (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+                        (err) => resolve({ lat: null, lng: null }),
+                        { enableHighAccuracy: true, timeout: 10000 }
+                    );
+                }
+            });
+        }
+
+        // Funzione principale di timbratura sicura[cite: 2]
+        async function eseguiTimbratura(tipo) {
+            const idDipendente = document.getElementById('dipendente').value;
+            const pinInserito = document.getElementById('pin').value;
+            const idCantiere = document.getElementById('cantiere').value;
+            const msg = document.getElementById('msg');
+
+            if (!idDipendente || !pinInserito || !idCantiere) {
+                msg.style.color = '#fbbf24';
+                msg.textContent = "Compila tutti i campi!";
+                return;
+            }
+
+            msg.style.color = '#38bdf8';
+            msg.textContent = "Verifica in corso... attendi il GPS.";
+
+            try {
+                // 1. Verifica del PIN[cite: 2]
+                const { data: dip } = await db.from('dipendenti').select('*').eq('id_dipendente', idDipendente).single();
+                if (!dip || dip.pin.toString() !== pinInserito.toString()) {
+                    msg.style.color = '#f43f5e';
+                    msg.textContent = "PIN errato!";
+                    return;
+                }
+
+                // 2. Rilevamento GPS e Dispositivo[cite: 2]
+                const posizione = await chiediPosizione();
+                const idDispositivo = ottieniIDDispositivo();
+
+                // 3. Blocco di sicurezza se il GPS è disattivato o negato[cite: 2]
+                if (posizione.lat === null) {
+                    msg.style.color = '#f43f5e';
+                    msg.textContent = "Errore: Devi attivare la posizione GPS per timbrare!";
+                    return;
+                }
+
+                // 4. Salvataggio blindato su Supabase[cite: 2]
+                const { error: errIns } = await db.from('timbrature').insert([{
+                    fk_dipendente: idDipendente,
+                    fk_cantiere: idCantiere,
+                    tipo_timbratura: tipo,
+                    latitudine: posizione.lat,
+                    longitudine: posizione.lng,
+                    id_dispositivo_utilizzato: idDispositivo
+                }]);
+
+                if (errIns) throw errIns;
+
+                msg.style.color = '#10b981';
+                msg.textContent = "Timbratura registrata con successo!";
+                document.getElementById('pin').value = ""; 
+            } catch (e) {
+                console.error(e);
+                msg.style.color = '#f43f5e';
+                msg.textContent = "Errore durante il salvataggio nel database.";
+            }
+        }
+    </script>
+</body>
+</html>
